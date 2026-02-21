@@ -1,0 +1,11 @@
+{
+    "scope": "read",
+    "activeConnectionId": "dev",
+    "connections": {
+        "dev": {
+            "host": "http://localhost:15672",
+            "username": "guest",
+            "password": "guest"
+        }
+    }
+}

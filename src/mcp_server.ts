@@ -1,5 +1,5 @@
 import { ERROR_CODES } from "./common/error_codes.js";
-import type { JsonRpcNotification, JsonRpcId, JsonRpcResponse, AnyIncomingMessage } from "./common/types.js";
+import type { AnyIncomingMessage, JsonRpcId, JsonRpcNotification, JsonRpcResponse } from "./common/types.js";
 import { errorResponse, isRequest, writeResponse } from "./common/utils.js";
 import { ResourceHandler } from "./resources/resource_handler.js";
 import { ToolHandler } from "./tools/tool_handler.js";
@@ -9,15 +9,18 @@ export class McpServer {
     private clientReady = false;
     private negotiatedVersion: string | null = null;
     private readonly resourceHandler: ResourceHandler;
-    private readonly serverInfo: { name: string, version: string };
+    private readonly serverInfo: { name: string; version: string };
     private readonly toolHandler: ToolHandler;
+    private readonly configError: string | null;
 
-    constructor(serverInfo: { name: string, version: string }) {
+    constructor(serverInfo: { name: string; version: string }, configError: string | null = null) {
         this.serverInfo = serverInfo;
         this.resourceHandler = new ResourceHandler();
         this.toolHandler = new ToolHandler();
+        this.configError = configError;
     }
-    private handleNotification(msg: JsonRpcNotification) {
+
+    private handleNotification(msg: JsonRpcNotification): void {
         if (msg.method === "notifications/initialized") {
             process.stderr.write("[mcp] client initialized\n");
             this.clientReady = true;
@@ -25,11 +28,19 @@ export class McpServer {
     }
 
     private handleInitialize(id: JsonRpcId, params?: Record<string, unknown>): JsonRpcResponse {
+        if (this.configError) {
+            return errorResponse(
+                id,
+                ERROR_CODES.ERR_INVALID_PARAMS,
+                `Invalid QMCP config: ${this.configError}`
+            );
+        }
+
         const protocolVersion = typeof params?.protocolVersion === "string" ? params.protocolVersion : null;
         if (!protocolVersion) {
             return errorResponse(id, ERROR_CODES.ERR_INVALID_PARAMS, "Missing or invalid protocolVersion parameter");
         }
-        // Demo behavior: accept the client-requested protocol version.
+
         this.negotiatedVersion = protocolVersion;
         this.initialized = true;
         return {
@@ -46,42 +57,54 @@ export class McpServer {
         };
     }
 
-    async onMessage(msg: AnyIncomingMessage) {
-        // Notification: no response.
+    async onMessage(msg: AnyIncomingMessage): Promise<void> {
         if (!isRequest(msg)) {
-            await this.handleNotification(msg);
+            this.handleNotification(msg);
             return;
         }
+
         const { method, params, id } = msg;
         try {
             if (method === "initialize") {
-                return writeResponse(this.handleInitialize(id, params));
+                writeResponse(this.handleInitialize(id, params));
+                return;
+            }
+            if (this.configError) {
+                writeResponse(errorResponse(id, ERROR_CODES.ERR_INVALID_REQUEST, "Server misconfigured; fix config and restart"));
+                return;
             }
             if (!this.initialized) {
-                return writeResponse(errorResponse(id, ERROR_CODES.ERR_INVALID_REQUEST, "Server not initialized yet"));
+                writeResponse(errorResponse(id, ERROR_CODES.ERR_INVALID_REQUEST, "Server not initialized yet"));
+                return;
             }
             if (method === "tools/list") {
                 if (!this.clientReady) {
-                    return writeResponse(errorResponse(id, ERROR_CODES.ERR_INVALID_REQUEST, "Client not ready (missing notifications/initialized)"));
+                    writeResponse(errorResponse(id, ERROR_CODES.ERR_INVALID_REQUEST, "Client not ready (missing notifications/initialized)"));
+                    return;
                 }
-                return writeResponse(this.toolHandler.handleToolsList(id));
+                writeResponse(this.toolHandler.handleToolsList(id));
+                return;
             }
             if (method === "resources/list") {
-                return writeResponse(this.resourceHandler.handleResourceList(id));
+                writeResponse(this.resourceHandler.handleResourceList(id));
+                return;
             }
             if (method === "resources/read") {
-                return writeResponse(await this.resourceHandler.handleResourcesRead(id, params));
+                writeResponse(await this.resourceHandler.handleResourcesRead(id, params));
+                return;
             }
             if (method === "tools/call") {
                 if (!this.clientReady) {
-                    return writeResponse(errorResponse(id, ERROR_CODES.ERR_INVALID_REQUEST, "Client not ready (missing notifications/initialized)"));
+                    writeResponse(errorResponse(id, ERROR_CODES.ERR_INVALID_REQUEST, "Client not ready (missing notifications/initialized)"));
+                    return;
                 }
-                return writeResponse(await this.toolHandler.handleToolCall(id, params));
+                writeResponse(await this.toolHandler.handleToolCall(id, params));
+                return;
             }
 
-            return writeResponse(errorResponse(id, ERROR_CODES.ERR_METHOD_NOT_FOUND, `Method not found: ${method}`));
+            writeResponse(errorResponse(id, ERROR_CODES.ERR_METHOD_NOT_FOUND, `Method not found: ${method}`));
         } catch (e) {
-            return writeResponse(errorResponse(id, ERROR_CODES.ERR_INTERNAL, "Internal server error", { details: String(e) }));
+            writeResponse(errorResponse(id, ERROR_CODES.ERR_INTERNAL, "Internal server error", { details: String(e) }));
         }
     }
 }

@@ -22,11 +22,13 @@ export class Resources {
 
     private registerHelpResource(): void {
         this.registerResource({
-            uri: "mcp://help",
+            uri: "qmcp://help",
             name: "Help",
             description: "Basic usage instructions",
             mimeType: "text/plain",
             getText: async () => "Welcome to MCP demo server",
         });
     }
+
+    
 }

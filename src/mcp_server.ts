@@ -1,5 +1,5 @@
 import { ERROR_CODES } from "./common/error_codes.js";
-import type { ResourceDef, JsonRpcNotification, JsonRpcId, JsonRpcResponse, AnyIncomingMessage } from "./common/types.js";
+import type { JsonRpcNotification, JsonRpcId, JsonRpcResponse, AnyIncomingMessage } from "./common/types.js";
 import { errorResponse, isRequest, writeResponse } from "./common/utils.js";
 import { ResourceHandler } from "./resources/resource_handler.js";
 import { ToolHandler } from "./tools/tool_handler.js";
@@ -8,26 +8,14 @@ export class McpServer {
     private initialized = false;
     private clientReady = false;
     private negotiatedVersion: string | null = null;
-    private resources: Map<string, ResourceDef> = new Map();
-    private resourceHandler: ResourceHandler;
-    private serverInfo: { name: string, version: string };
-    private toolHandler: ToolHandler;
+    private readonly resourceHandler: ResourceHandler;
+    private readonly serverInfo: { name: string, version: string };
+    private readonly toolHandler: ToolHandler;
 
     constructor(serverInfo: { name: string, version: string }) {
         this.serverInfo = serverInfo;
-        this.resourceHandler = new ResourceHandler(this.resources);
+        this.resourceHandler = new ResourceHandler();
         this.toolHandler = new ToolHandler();
-        this.registerResource({
-            uri: "mcp://help",
-            name: "Help",
-            description: "Basic usage instructions",
-            mimeType: "text/plain",
-            getText: async () => "Welcome to MCP demo server"
-        });
-    }
-
-    private registerResource(res: ResourceDef) {
-        this.resources.set(res.uri, res);
     }
     private handleNotification(msg: JsonRpcNotification) {
         if (msg.method === "notifications/initialized") {

@@ -1,12 +1,13 @@
 import type { JsonRpcId, JsonRpcResponse, ResourceDef } from "../common/types.js";
 import { errorResponse } from "../common/utils.js";
 import { ERROR_CODES } from "../common/error_codes.js";
+import { Resources } from "./resources.js";
 
 export class ResourceHandler {
-    private resources: Map<string, ResourceDef>;
+    private readonly resources: Resources;
 
-    constructor(resources: Map<string, ResourceDef>) {
-        this.resources = resources;
+    constructor() {
+        this.resources = new Resources();
     }
 
     public async handleResourcesRead(
@@ -18,7 +19,7 @@ export class ResourceHandler {
             return errorResponse(id, ERROR_CODES.ERR_INVALID_PARAMS, "Missing params.uri");
         }
 
-        const resource = this.resources.get(uri);
+        const resource = this.resources.getResource(uri);
         if (!resource) {
             return errorResponse(id, ERROR_CODES.ERR_INVALID_PARAMS, `Unknown resource: ${uri}`);
         }
@@ -41,7 +42,7 @@ export class ResourceHandler {
     }
 
     public handleResourceList(id: JsonRpcId): JsonRpcResponse {
-        const resources = [...this.resources.values()].map((resource) => ({
+        const resources = [...this.resources.listResources().values()].map((resource: ResourceDef) => ({
             uri: resource.uri,
             name: resource.name,
             description: resource.description,
